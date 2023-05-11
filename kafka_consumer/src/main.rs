@@ -1,6 +1,6 @@
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
-use rdkafka::message::{Headers, Message};
+use rdkafka::message::Message;
 use std::env;
 
 #[tokio::main]

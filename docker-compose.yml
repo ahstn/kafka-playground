@@ -10,6 +10,24 @@ services:
     volumes:
      - ./data/:/docker-entrypoint-initdb.d/
 
+  rust-consumer:
+    build:
+      context: ./kafka_consumer
+    container_name: rust-consumer
+    depends_on:
+      - kafka
+      - connect
+    environment:
+      KAFKA_BROKERS: broker:9092
+      KAFKA_TOPIC: postgres-01-users
+
+  http-echo:
+    image: mendhak/http-https-echo:29
+    environment:
+      HTTPS_PORT: 8443
+    ports:
+      - 8443:8443
+
   kafka-ui:
     container_name: kafka-ui
     image: provectuslabs/kafka-ui:v0.6.2
@@ -28,7 +46,6 @@ services:
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
       DYNAMIC_CONFIG_ENABLED: "true"
       
-
   broker:
     image: confluentinc/cp-kafka:7.4.0
     hostname: broker
@@ -102,6 +119,7 @@ services:
       - -c
       - |
         confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.1
+        confluent-hub install --no-prompt confluentinc/kafka-connect-http:latest
         /etc/confluent/docker/run
 
   control-center:
@@ -117,7 +135,7 @@ services:
       - "9021:9021"
     environment:
       CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'
-      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
+      CONTROL_CENTER_CONNECT_DEFAULT_CLUSTER: 'connect:8083'
       CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
       CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"
       CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"

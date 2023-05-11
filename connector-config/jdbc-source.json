@@ -1,16 +1,17 @@
 {
-    "name": "postgres_01",
+    "name": "postgres",
     "config": {
         "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
         "connection.url": "jdbc:postgresql://postgres:5432/postgres",
         "connection.user": "postgres",
         "connection.password": "postgres",
-        "table.whitelist": "users",
-        "topic.prefix": "postgres-01-",
+        "table.whitelist": "users, movies",
+        "topic.prefix": "postgres",
         "mode": "bulk",
-        "poll.interval.ms": 10000,
+        "poll.interval.ms": 5000,
         "transforms": "createKey",
         "transforms.createKey.type": "org.apache.kafka.connect.transforms.ValueToKey",
-        "transforms.createKey.fields": "id"
+        "transforms.createKey.fields": "id",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter"
     }
 }
