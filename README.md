@@ -17,6 +17,9 @@ Start the Docker stack:
 # start containers - add '-d' to run in background
 docker-compose up
 
+# optionally start ksql containers
+docker-compose --profile ksql up
+
 # check containers and health
 docker-compose ps
 ```
@@ -96,6 +99,7 @@ If `value.converter.schema.registry.url` is included, then the schema will be re
 [http sink connector | confluent hub]: https://www.confluent.io/hub/confluentinc/kafka-connect-http
 [data generator | confluent hub]: https://www.confluent.io/hub/confluentinc/kafka-connect-datagen
 [jdbc source json format | stackoverflow]: https://stackoverflow.com/questions/66260026/transform-kafka-connect-jdbc-source-connector-output-to-custom-format
+[smt examples | confluent]: https://docs.confluent.io/cloud/current/connectors/single-message-transforms.html#smt-examples
 
 [connector-config/jdbc-source.json](./connector-config/jdbc-source.json)
 [connector-config/http-sink.json](./connector-config/http-sink.json)

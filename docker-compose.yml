@@ -1,6 +1,9 @@
 ---
-version: '2'
+version: "3.9"
+
 services:
+  # Supporting resources - DB, consumers, testing sink, etc
+  # ---
   postgres:
     image: postgres:15
     environment:
@@ -8,7 +11,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DATABASE: postgres
     volumes:
-     - ./data/:/docker-entrypoint-initdb.d/
+      - ./data/:/docker-entrypoint-initdb.d/
 
   rust-consumer:
     build:
@@ -18,58 +21,48 @@ services:
       - kafka
       - connect
     environment:
-      KAFKA_BROKERS: broker:9092
-      KAFKA_TOPIC: postgres-01-users
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_TOPIC: postgres-users
 
   http-echo:
     image: mendhak/http-https-echo:29
     environment:
+      HTTP_PORT: 8080
       HTTPS_PORT: 8443
-    ports:
-      - 8443:8443
 
-  kafka-ui:
-    container_name: kafka-ui
-    image: provectuslabs/kafka-ui:v0.6.2
-    ports:
-      - 8080:8080
-    depends_on:
-      - broker
-      - schema-registry
-      - connect
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
-      KAFKA_CLUSTERS_0_METRICS_PORT: 9997
-      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8085
-      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: first
-      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
-      DYNAMIC_CONFIG_ENABLED: "true"
-      
-  broker:
+  # Confluent - Kafka, Connect & Schema Registry
+  # ---
+  kafka:
     image: confluentinc/cp-kafka:7.4.0
-    hostname: broker
-    container_name: broker
+    hostname: kafka
+    container_name: kafka
     ports:
       - "9092:9092"
-      - "9101:9101"
+      - "9997:9997"
     environment:
+      environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_JMX_PORT: 9101
-      KAFKA_JMX_HOSTNAME: localhost
-      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_JMX_PORT: 9997
+      KAFKA_JMX_HOSTNAME: kafka
+      KAFKA_JMX_OPTS: >-
+        -Dcom.sun.management.jmxremote 
+        -Dcom.sun.management.jmxremote.authenticate=false 
+        -Dcom.sun.management.jmxremote.ssl=false 
+        -Djava.rmi.server.hostname=kafka 
+        -Dcom.sun.management.jmxremote.rmi.port=9997
+      KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_NODE_ID: 1
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@broker:29093'
-      KAFKA_LISTENERS: 'PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
-      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_LISTENERS: "PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
     command:
       - /bin/bash
       - -c
@@ -82,23 +75,27 @@ services:
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
-      - broker
+      - kafka
     ports:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092'
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-    
+      SCHEMA_REGISTRY_LISTENERS: http://schema-registry:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "PLAINTEXT://kafka:29092"
+      SCHEMA_REGISTRY_SCHEMA_REGISTRY_INTER_INSTANCE_PROTOCOL: "http"
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
+
   connect:
     image: confluentinc/cp-kafka-connect:7.4.0
-    ports:
-      - 8083:8083
+    hostname: connect
+    container_name: connect
     depends_on:
-      - broker
+      - kafka
       - schema-registry
+    ports:
+      - "8083:8083"
     environment:
-      CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
+      CONNECT_BOOTSTRAP_SERVERS: "kafka:29092"
       CONNECT_GROUP_ID: compose-connect-group
       CONNECT_CONFIG_STORAGE_TOPIC: _connect_configs
       CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
@@ -107,9 +104,9 @@ services:
       CONNECT_STATUS_STORAGE_TOPIC: _connect_status
       CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
       CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.storage.StringConverter
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8085
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
@@ -118,52 +115,83 @@ services:
       - /bin/bash
       - -c
       - |
-        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:10.7.1
+        confluent-hub install --no-prompt confluentinc/kafka-connect-jdbc:latest
+        confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest
         confluent-hub install --no-prompt confluentinc/kafka-connect-http:latest
         /etc/confluent/docker/run
 
-  control-center:
-    image: confluentinc/cp-enterprise-control-center:7.4.0
-    hostname: control-center
-    container_name: control-center
-    depends_on:
-      - broker
-      - schema-registry
-      - connect
-      - ksqldb-server
-    ports:
-      - "9021:9021"
-    environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'
-      CONTROL_CENTER_CONNECT_DEFAULT_CLUSTER: 'connect:8083'
-      CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
-      CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"
-      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
-      CONTROL_CENTER_REPLICATION_FACTOR: 1
-      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
-      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-      PORT: 9021
-
+  # KSQL - Server and CLI
+  # ---
   ksqldb-server:
     image: confluentinc/cp-ksqldb-server:7.4.0
     hostname: ksqldb-server
     container_name: ksqldb-server
     depends_on:
-      - broker
-      - connect
+      - kafka
+      - schema-registry
     ports:
       - "8088:8088"
+    profiles:
+      - ksql
     environment:
-      KSQL_CONFIG_DIR: "/etc/ksql"
-      KSQL_BOOTSTRAP_SERVERS: "broker:29092"
+      KSQL_CONFIG_DIR: "/etc/ksqldb"
+      KSQL_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/ksqldb/log4j.properties"
+      KSQL_BOOTSTRAP_SERVERS: "kafka:29092"
       KSQL_HOST_NAME: ksqldb-server
-      KSQL_LISTENERS: "http://0.0.0.0:8088"
+      KSQL_LISTENERS: "http://ksqldb-server:8088"
       KSQL_CACHE_MAX_BYTES_BUFFERING: 0
       KSQL_KSQL_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
-      KSQL_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
-      KSQL_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor"
       KSQL_KSQL_CONNECT_URL: "http://connect:8083"
-      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 1
-      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: 'true'
-      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: 'true'
+
+  ksqldb-cli:
+    image: confluentinc/cp-ksqldb-cli:7.4.0
+    container_name: ksqldb-cli
+    depends_on:
+      - ksqldb-server
+    profiles:
+      - ksql
+    entrypoint: /bin/sh
+    tty: true
+
+  # UI Options
+  # ---
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.4.0
+    hostname: control-center
+    container_name: control-center
+    depends_on:
+      - kafka
+      - schema-registry
+      - ksqldb-server
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: "kafka:29092"
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_STREAMS_NUM_STREAM_THREADS: 2
+      CONTROL_CENTER_CONNECT_CLUSTER: "http://connect:8083"
+      CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONTROL_CENTER_PRODUCER_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONTROL_CENTER_CONFLUENT_SUPPORT_METRICS_ENABLE: "false"
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:v0.7.0
+    ports:
+      - 8080:8080
+    depends_on:
+      - broker
+      - schema-registry
+      - connect
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_METRICS_PORT: 9997
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: first
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+      KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
+      DYNAMIC_CONFIG_ENABLED: "true"
